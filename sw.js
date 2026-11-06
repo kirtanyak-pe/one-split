@@ -1,6 +1,6 @@
 // Caches the app shell so One Split opens offline. API calls (the Worker) are never cached here: the app has its
 // own read cache and shows an "offline" state when a request fails.
-const CACHE = 'one-split-shell-v1' // keep the name: update.ts refreshes ./index.html in it before reloading
+const CACHE = 'one-split-shell-v2' // v1 could hold a page whose scripts a later deploy deleted (blank app); activate drops it
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png']
 
 self.addEventListener('install', (e) => {
@@ -18,14 +18,36 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     // Saved page first, so the app opens at once without waiting for the network; a fresh copy is fetched alongside and
     // saved for next time. A new deploy still arrives on this launch: update.ts sees the new version and reloads.
-    const fresh = fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)) } return r })
-    e.respondWith(caches.match('./index.html').then((hit) => hit || fresh).catch(() => fresh))
+    // The saved page is used only when every script/style it names is saved too: a deploy deletes the old files, and a
+    // page whose script 404s is a blank screen that can't even run its own update check.
+    const fresh = fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' })).then((r) => { if (r.ok) e.waitUntil(saveShell(r.clone())); return r })
+    e.respondWith(complete().then((hit) => hit || fresh).catch(() => fresh))
     e.waitUntil(fresh.catch(() => {}))
     return
   }
   // Hashed build assets and fonts: cache first, fill on miss.
   e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(req, copy)) } return r })))
 })
+
+const assetsOf = (html) => [...html.matchAll(/(?:src|href)="(\.?\/?assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href)
+
+/** The saved page, only if all of its build files are saved too. */
+async function complete() {
+  const c = await caches.open(CACHE)
+  const hit = await c.match('./index.html')
+  if (!hit) return undefined
+  const files = assetsOf(await hit.clone().text())
+  const have = await Promise.all(files.map((u) => c.match(u)))
+  return have.every(Boolean) ? hit : undefined
+}
+
+/** Save a fresh page: its build files first, the page last, so a saved page never points at files that aren't there. */
+async function saveShell(r) {
+  const html = await r.clone().text()
+  const c = await caches.open(CACHE)
+  await c.addAll(assetsOf(html))
+  await c.put('./index.html', r)
+}
 
 // "Split from bank SMS" (iPhone): the Worker pushes { title, body, path } when a bank SMS arrives through the Shortcut.
 self.addEventListener('push', (e) => {

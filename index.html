@@ -17,7 +17,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="./assets/index-B8UTQarV.js"></script>
+    <script>
+      // Boot guard: if a build file fails to load (a saved page from an older deploy), drop the saved page and reload once.
+      addEventListener('error', function (e) {
+        var el = e.target, src = el && (el.src || el.href)
+        if (!src || !/\/assets\//.test(src) || sessionStorage.getItem('one-split-boot-retry')) return
+        sessionStorage.setItem('one-split-boot-retry', '1')
+        var go = function () { location.reload() }
+        if (!window.caches) return go()
+        caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k) })) }).then(go, go)
+      }, true)
+      addEventListener('load', function () { setTimeout(function () { try { sessionStorage.removeItem('one-split-boot-retry') } catch (_) {} }, 5000) })
+    </script>
+    <script type="module" crossorigin src="./assets/index-CA1vr1tQ.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CYG6vseH.css">
   </head>
   <body>
