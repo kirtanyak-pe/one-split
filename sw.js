@@ -1,6 +1,6 @@
 // Caches the app shell so One Split opens offline. API calls (the Worker) are never cached here: the app has its
 // own read cache and shows an "offline" state when a request fails.
-const CACHE = 'one-split-shell-v1'
+const CACHE = 'one-split-shell-v1' // keep the name: update.ts refreshes ./index.html in it before reloading
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png']
 
 self.addEventListener('install', (e) => {
@@ -16,8 +16,11 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin && !/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return // Worker/API: network only
   if (url.pathname.endsWith('/version.json')) return // update check: always the network
   if (req.mode === 'navigate') {
-    // Network first for the page (so updates arrive), shell from cache when offline.
-    e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); return r }).catch(() => caches.match('./index.html')))
+    // Saved page first, so the app opens at once without waiting for the network; a fresh copy is fetched alongside and
+    // saved for next time. A new deploy still arrives on this launch: update.ts sees the new version and reloads.
+    const fresh = fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)) } return r })
+    e.respondWith(caches.match('./index.html').then((hit) => hit || fresh).catch(() => fresh))
+    e.waitUntil(fresh.catch(() => {}))
     return
   }
   // Hashed build assets and fonts: cache first, fill on miss.
