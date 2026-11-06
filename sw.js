@@ -14,6 +14,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url)
   if (req.method !== 'GET' || url.protocol.startsWith('chrome')) return
   if (url.origin !== location.origin && !/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) return // Worker/API: network only
+  if (url.pathname.endsWith('/version.json')) return // update check: always the network
   if (req.mode === 'navigate') {
     // Network first for the page (so updates arrive), shell from cache when offline.
     e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); return r }).catch(() => caches.match('./index.html')))
